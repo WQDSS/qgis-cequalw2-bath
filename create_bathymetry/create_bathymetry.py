@@ -21,6 +21,8 @@
  *                                                                         *
  ***************************************************************************/
 """
+
+import csv
 from PyQt5.QtCore import QSettings, QTranslator, qVersion, QCoreApplication
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QAction
@@ -32,8 +34,9 @@ from .create_bathymetry_dialog import BathCreatorDialog
 import os.path
 
 #from qgis.core import QgsProject
-from qgis.core import QgsMessageLog
+from qgis.core import (QgsMessageLog, QgsDistanceArea)
 from qgis.utils import iface
+
 
 class BathCreator:
     """QGIS Plugin Implementation."""
@@ -200,13 +203,32 @@ class BathCreator:
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            #pass
-            with open('/home/yoav/out.csv', 'w') as f:
+            with open('/home/yoav/out.csv', 'w') as csvfile:
+                f = csv.writer(csvfile, delimiter=' ', quotechar='|')
+                f.writerow(["$"])
+                layer = iface.activeLayer()
+                features = layer.getFeatures()
+                d = QgsDistanceArea()
+                data = []
+                for feat in features:
+                    data_dic = {}
+                    data_dic['segment']=feat["Segment"]
+                    data_dic['DLX']=round(d.measureLength(feat.geometry()),2)
+                    QgsMessageLog.logMessage( data_dic, tag="Yoav")
+
+
+"""
+            with open('/home/yoav/out.csv', 'w') as csvfile:
                 #layer = QgsProject.instance().mapLayersByName('play')
                 layer = iface.activeLayer()
                 features = layer.getFeatures()
+                d = QgsDistanceArea()
+                layer.startEditing()
                 for feat in features:
                     attrs = feat.attributes()
-                    f.write('{}, {}\n'.format(attrs[0], attrs[1]))
+                    print(feat["Segment"])
+                    print(d.measureLength(feat.geometry()))
+                    feat["len"] = string(d.measureLength(feat.geometry()))
+                    layer.updateFeature(feat)
+            layer.commitChanges()
+"""
