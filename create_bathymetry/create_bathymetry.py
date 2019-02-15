@@ -23,6 +23,7 @@
 """
 
 import csv
+
 from PyQt5.QtCore import QSettings, QTranslator, qVersion, QCoreApplication
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QAction
@@ -187,6 +188,46 @@ class BathCreator:
                 action)
             self.iface.removeToolBarIcon(action)
 
+    def _calculateAangle(self, feature):
+        """Calculates the angle in radians between the start and end point of the vector line"""
+        multilinestring = feature.geometry().constGet()
+        first_part = multilinestring.geometryN(0)
+        first_vertex = first_part.pointN(0)
+        last_vertex = first_part.pointN(first_part.numPoints()-1)
+        az = first_vertex.azimuth(last_vertex)
+        if az < 0:
+            az = 360 + az
+        pi=22/7
+        rad = round(az*(pi/180),2)
+        return rad
+
+    def _writeExcel(self, data):
+        sorted_data = sorted(data, key=lambda k: k['segment'])
+        segments = [x['segment'] for x in sorted_data]
+        segments.insert(0,'')
+        dlx = [x['DLX'] for x in sorted_data]
+        dlx.insert(0,'DLX')
+        elws = [x['ELWS'] for x in sorted_data]
+        elws.insert(0,'ELWS')
+        phi = [x['PHI0'] for x in sorted_data]
+        phi.insert(0,'PHI0')
+        fric = [x['FRIC'] for x in sorted_data]
+        fric.insert(0,'FRIC')
+        l = ['LAYERH']
+        for i in sorted_data:
+            l.append('')
+        l.append('K')
+        l.append('ELEV')
+        with open('/home/yoav/out.csv', 'w') as csvfile:
+                f = csv.writer(csvfile, delimiter=',')
+                f.writerow(["$"])
+                f.writerow(segments)
+                f.writerow(dlx)
+                f.writerow(elws)
+                f.writerow(phi)
+                f.writerow(fric)
+                f.writerow(l)
+                
 
     def run(self):
         """Run method that performs all the real work"""
@@ -203,32 +244,25 @@ class BathCreator:
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
-            with open('/home/yoav/out.csv', 'w') as csvfile:
-                f = csv.writer(csvfile, delimiter=' ', quotechar='|')
-                f.writerow(["$"])
-                layer = iface.activeLayer()
-                features = layer.getFeatures()
-                d = QgsDistanceArea()
-                data = []
-                for feat in features:
-                    data_dic = {}
-                    data_dic['segment']=feat["Segment"]
-                    data_dic['DLX']=round(d.measureLength(feat.geometry()),2)
-                    QgsMessageLog.logMessage( data_dic, tag="Yoav")
+            layer = iface.activeLayer()
+            features = layer.getFeatures()
+            d = QgsDistanceArea()
+            data = []
+            for feat in features:
+                data_dic = {}
+                
+                # Read fields from the vector line
+                data_dic['segment']=feat["Segment"]
+                data_dic['ELWS']=feat["ELWS"]
+                data_dic['FRIC']=feat["FRIC"]
+                
+                # Get vector line length
+                data_dic['DLX']=round(d.measureLength(feat.geometry()),2)
+                
+                # Calculate line angle
+                data_dic['PHI0'] = self._calculateAangle(feat)
+                
+                QgsMessageLog.logMessage( str(data_dic), tag="Yoav")
+                data.append(data_dic)
+            self._writeExcel(data)
 
-
-"""
-            with open('/home/yoav/out.csv', 'w') as csvfile:
-                #layer = QgsProject.instance().mapLayersByName('play')
-                layer = iface.activeLayer()
-                features = layer.getFeatures()
-                d = QgsDistanceArea()
-                layer.startEditing()
-                for feat in features:
-                    attrs = feat.attributes()
-                    print(feat["Segment"])
-                    print(d.measureLength(feat.geometry()))
-                    feat["len"] = string(d.measureLength(feat.geometry()))
-                    layer.updateFeature(feat)
-            layer.commitChanges()
-"""
