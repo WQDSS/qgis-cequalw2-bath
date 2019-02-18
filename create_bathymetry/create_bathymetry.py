@@ -24,7 +24,7 @@
 
 import csv
 
-from PyQt5.QtCore import QSettings, QTranslator, qVersion, QCoreApplication
+from PyQt5.QtCore import QSettings, QTranslator, qVersion, QCoreApplication, QVariant
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QAction
 
@@ -35,8 +35,9 @@ from .create_bathymetry_dialog import BathCreatorDialog
 import os.path
 
 #from qgis.core import QgsProject
-from qgis.core import (QgsMessageLog, QgsDistanceArea)
+from qgis.core import (QgsMessageLog, QgsDistanceArea, QgsGeometry,QgsVectorLayer,QgsFeature, QgsProject, QgsField)
 from qgis.utils import iface
+import processing
 
 
 class BathCreator:
@@ -227,7 +228,31 @@ class BathCreator:
                 f.writerow(phi)
                 f.writerow(fric)
                 f.writerow(l)
-                
+
+    def _createBufferLayer(self, geometry ,name ,buffers):
+        layer = QgsVectorLayer(geometry, name, 'memory')
+        layer.startEditing()
+        prov = layer.dataProvider()
+        prov.addAttributes([QgsField("SEGMENT",  QVariant.Int)])
+        layer.updateFields()
+        for b in buffers:
+            feat = QgsFeature()
+            feat.initAttributes(1)
+            z = b[0]
+            feat.setGeometry(z)
+            zz = int(b[1])
+            feat.setAttribute(0,zz)
+            prov.addFeatures([feat])
+            #QgsMessageLog.logMessage( str(zz), tag="Yoav")
+        layer.updateExtents()
+        layer.commitChanges()
+        QgsProject.instance().addMapLayers([layer])
+
+    def _clacVolumes(self, histograms):
+        heights_list = histograms['OUTPUT'].fields().names()
+        features = histograms['OUTPUT'].getFeatures()
+        for feat in features:
+            QgsMessageLog.logMessage( str(feat['SEGMENT']), tag="Yoav")
 
     def run(self):
         """Run method that performs all the real work"""
@@ -248,6 +273,7 @@ class BathCreator:
             features = layer.getFeatures()
             d = QgsDistanceArea()
             data = []
+            buffer_layer = []
             for feat in features:
                 data_dic = {}
                 
@@ -262,7 +288,16 @@ class BathCreator:
                 # Calculate line angle
                 data_dic['PHI0'] = self._calculateAangle(feat)
                 
+                # Calculate buffer
+                buff = feat.geometry().buffer(15,2,QgsGeometry.CapFlat, QgsGeometry.JoinStyleRound, miterLimit = 0)
+                buffer_layer.append((buff, data_dic['segment']))
+                
+                
                 QgsMessageLog.logMessage( str(data_dic), tag="Yoav")
                 data.append(data_dic)
+            self._createBufferLayer('Polygon?crs=epsg:3857', 'foo' ,buffer_layer)
+            histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : 'LIDAR', 'RASTER_BAND' : '1', 'INPUT_VECTOR' : 'foo', 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
+            volume_data = self._clacVolumes(histograms)
+
             self._writeExcel(data)
 
