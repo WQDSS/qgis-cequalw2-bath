@@ -249,14 +249,44 @@ class BathCreator:
         QgsProject.instance().addMapLayers([layer])
 
     def _clacVolumes(self, histograms):
-        heights_list = histograms['OUTPUT'].fields().names()
+        DELTA = 0.5
+        CELL_SIZE = 2 
+        fields_list = histograms['OUTPUT'].fields().names()
+        fields_list.pop(0) # remove "SEGMENT" field.
+        heights_list = [float(i) for i in fields_list] # from string to float
+        min_h = min(heights_list)
+        QgsMessageLog.logMessage( 'Min height is: ' + str(min_h), tag="Yoav")
+        QgsMessageLog.logMessage( 'Delta is: ' + str(DELTA), tag="Yoav")
+        volumes = []
         features = histograms['OUTPUT'].getFeatures()
         for feat in features:
-            QgsMessageLog.logMessage( str(feat['SEGMENT']), tag="Yoav")
+            QgsMessageLog.logMessage( 'starting segment: ' + str(feat['SEGMENT']), tag="Yoav")
+            volume = []
+            up_limit = min_h + DELTA
+            tmp_len = 0
+            num_of_cells = 0
+            for h in heights_list: # This list is already sorted
+                h_string = str(h)
+                if h == int(h):  # The table represent 15.0 as 15
+                    h_string = str(int(h))
+                num_of_cells += feat[h_string] # Calculate number of cells for populating the next delta 
+                if h < up_limit:
+                    tmp_len += (up_limit - h)*feat[h_string] # This is in meters overall heights
+                else:
+                    volume.append(round(tmp_len*CELL_SIZE,2)) # finished with this delta
+                    up_limit += DELTA  # setup the next delta
+                    tmp_len = num_of_cells*DELTA # add the cells from the previous deltas
+                    tmp_len += (up_limit - h)*feat[h_string] # populate the current pixel value
+            volume.append(round(tmp_len*CELL_SIZE,2)) # append the last h calculations
+            volumes.append(volume) # append to all features list
+        QgsMessageLog.logMessage( 'Summary: ' + str(volumes), tag="Yoav")
+        return(volumes)    
 
     def run(self):
         """Run method that performs all the real work"""
 
+        #Variables that need to go out ot the GUI:
+        BUFF_LAYER_NAME = 'foo'
         # Create the dialog with elements (after translation) and keep reference
         # Only create GUI ONCE in callback, so that it will only load when the plugin is started
         if self.first_start == True:
@@ -288,15 +318,19 @@ class BathCreator:
                 # Calculate line angle
                 data_dic['PHI0'] = self._calculateAangle(feat)
                 
-                # Calculate buffer
+                # Calculate buffer and add the segment ID for each buffer
                 buff = feat.geometry().buffer(15,2,QgsGeometry.CapFlat, QgsGeometry.JoinStyleRound, miterLimit = 0)
                 buffer_layer.append((buff, data_dic['segment']))
                 
                 
                 QgsMessageLog.logMessage( str(data_dic), tag="Yoav")
                 data.append(data_dic)
-            self._createBufferLayer('Polygon?crs=epsg:3857', 'foo' ,buffer_layer)
-            histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : 'LIDAR', 'RASTER_BAND' : '1', 'INPUT_VECTOR' : 'foo', 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
+            
+            # Add the buffer layer to the project 
+            self._createBufferLayer('Polygon?crs=epsg:3857', BUFF_LAYER_NAME ,buffer_layer)
+            
+            # Calculate volume by the pixels value in each buffer
+            histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : 'LIDAR', 'RASTER_BAND' : '1', 'INPUT_VECTOR' : BUFF_LAYER_NAME, 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
             volume_data = self._clacVolumes(histograms)
 
             self._writeExcel(data)
