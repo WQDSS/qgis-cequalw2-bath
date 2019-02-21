@@ -202,7 +202,7 @@ class BathCreator:
         rad = round(az*(pi/180),2)
         return rad
 
-    def _writeExcel(self, data):
+    def _writeExcel(self, data, width_data):
         sorted_data = sorted(data, key=lambda k: k['segment'])
         segments = [x['segment'] for x in sorted_data]
         segments.insert(0,'')
@@ -220,14 +220,16 @@ class BathCreator:
         l.append('K')
         l.append('ELEV')
         with open('/home/yoav/out.csv', 'w') as csvfile:
-                f = csv.writer(csvfile, delimiter=',')
-                f.writerow(["$"])
-                f.writerow(segments)
-                f.writerow(dlx)
-                f.writerow(elws)
-                f.writerow(phi)
-                f.writerow(fric)
-                f.writerow(l)
+            f = csv.writer(csvfile, delimiter=',')
+            f.writerow(["$"])
+            f.writerow(segments)
+            f.writerow(dlx)
+            f.writerow(elws)
+            f.writerow(phi)
+            f.writerow(fric)
+            f.writerow(l)
+            for row in zip(*width_data):
+                f.writerow(row)
 
     def _createBufferLayer(self, geometry ,name ,buffers):
         layer = QgsVectorLayer(geometry, name, 'memory')
@@ -273,14 +275,25 @@ class BathCreator:
                 if h < up_limit:
                     tmp_len += (up_limit - h)*feat[h_string] # This is in meters overall heights
                 else:
-                    volume.append(round(tmp_len*CELL_SIZE,2)) # finished with this delta
+                    volume.append(round(tmp_len*CELL_SIZE*CELL_SIZE,2)) # finished with this delta
                     up_limit += DELTA  # setup the next delta
-                    tmp_len = num_of_cells*DELTA # add the cells from the previous deltas
+                    tmp_len = (num_of_cells - feat[h_string])*DELTA # add the cells from the previous deltas
                     tmp_len += (up_limit - h)*feat[h_string] # populate the current pixel value
-            volume.append(round(tmp_len*CELL_SIZE,2)) # append the last h calculations
+            volume.append(round(tmp_len*CELL_SIZE*CELL_SIZE,2)) # append the last h calculations
             volumes.append(volume) # append to all features list
         QgsMessageLog.logMessage( 'Summary: ' + str(volumes), tag="Yoav")
         return(volumes)    
+
+    def _calcWidth(self, data, volume_data):
+        DELTA = 0.5
+        l = len(volume_data[0])
+        for i in range(len(data)):
+            QgsMessageLog.logMessage( str(data), tag="Yoav")
+            QgsMessageLog.logMessage( str(data[i]), tag="Yoav")
+            for x in range(l):
+                ll = data[i]['DLX']
+                volume_data[i][x] = (volume_data[i][x]/ll)/DELTA
+        return volume_data
 
     def run(self):
         """Run method that performs all the real work"""
@@ -327,11 +340,14 @@ class BathCreator:
                 data.append(data_dic)
             
             # Add the buffer layer to the project 
-            self._createBufferLayer('Polygon?crs=epsg:3857', BUFF_LAYER_NAME ,buffer_layer)
+            self._createBufferLayer('Polygon?crs=epsg:2039', BUFF_LAYER_NAME ,buffer_layer)
             
-            # Calculate volume by the pixels value in each buffer
+            # Calculate volume by the cells value in each buffer
             histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : 'LIDAR', 'RASTER_BAND' : '1', 'INPUT_VECTOR' : BUFF_LAYER_NAME, 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
-            volume_data = self._clacVolumes(histograms)
-
-            self._writeExcel(data)
+            volume_data = self._clacVolumes(histograms) # list of lists
+            
+            # Calculate width
+            width_data = self._calcWidth(data, volume_data)
+            
+            self._writeExcel(data, width_data)
 
