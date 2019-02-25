@@ -8,8 +8,8 @@
                               -------------------
         begin                : 2019-02-04
         git sha              : $Format:%H$
-        copyright            : (C) 2019 by Yoav Bornstein
-        email                : yoavborenst@gmail.com
+        copyright            : (C) 2019 by Create_Bathymetry Bornstein
+        email                : Create_Bathymetryborenst@gmail.com
  ***************************************************************************/
 
 /***************************************************************************
@@ -202,9 +202,11 @@ class BathCreator:
         rad = round(az*(pi/180),2)
         return rad
 
-    def _writeExcel(self, data, width_data):
-        sorted_data = sorted(data, key=lambda k: k['segment'])
-        segments = [x['segment'] for x in sorted_data]
+    def _writeExcel(self, data, width_data, delta, file_name):
+        """Write the csv file in the CE-QUAL-W2 format """
+        sorted_data = sorted(data, key=lambda k: k['SEGMENT'])
+        # populate lists for the first lines of the csv
+        segments = [x['SEGMENT'] for x in sorted_data]
         segments.insert(0,'')
         dlx = [x['DLX'] for x in sorted_data]
         dlx.insert(0,'DLX')
@@ -215,11 +217,14 @@ class BathCreator:
         fric = [x['FRIC'] for x in sorted_data]
         fric.insert(0,'FRIC')
         l = ['LAYERH']
-        for i in sorted_data:
+        for i in sorted_data: # Add the empty cells as number of segments
             l.append('')
         l.append('K')
         l.append('ELEV')
-        with open('/home/yoav/out.csv', 'w') as csvfile:
+        for e in width_data: #Insert the first and last rows of "0"
+            e.insert(0,0)
+            e.append(0)
+        with open(file_name, 'w') as csvfile:
             f = csv.writer(csvfile, delimiter=',')
             f.writerow(["$"])
             f.writerow(segments)
@@ -228,10 +233,15 @@ class BathCreator:
             f.writerow(phi)
             f.writerow(fric)
             f.writerow(l)
+            i = 1
             for row in zip(*width_data):
-                f.writerow(row)
+                r = row[ : 0] + (delta,) + row[0: ] # add the delta value column A
+                r += (i,)  # add the K value
+                f.writerow(r)
+                i += 1
 
     def _createBufferLayer(self, geometry ,name ,buffers):
+        """Saves a buffer layer to the project memory for user impreesion how the buffer looks"""
         layer = QgsVectorLayer(geometry, name, 'memory')
         layer.startEditing()
         prov = layer.dataProvider()
@@ -240,31 +250,27 @@ class BathCreator:
         for b in buffers:
             feat = QgsFeature()
             feat.initAttributes(1)
-            z = b[0]
-            feat.setGeometry(z)
-            zz = int(b[1])
-            feat.setAttribute(0,zz)
+            feat.setGeometry(b[0])
+            feat.setAttribute(0,str(int(b[1])))
             prov.addFeatures([feat])
-            #QgsMessageLog.logMessage( str(zz), tag="Yoav")
         layer.updateExtents()
         layer.commitChanges()
         QgsProject.instance().addMapLayers([layer])
 
-    def _clacVolumes(self, histograms):
-        DELTA = 0.5
-        CELL_SIZE = 2 
+    def _calcVolumes(self, histograms, delta, cell_size):
+        """Calculate the volume of each delta for each segment"""
         fields_list = histograms['OUTPUT'].fields().names()
         fields_list.pop(0) # remove "SEGMENT" field.
         heights_list = [float(i) for i in fields_list] # from string to float
         min_h = min(heights_list)
-        QgsMessageLog.logMessage( 'Min height is: ' + str(min_h), tag="Yoav")
-        QgsMessageLog.logMessage( 'Delta is: ' + str(DELTA), tag="Yoav")
+        QgsMessageLog.logMessage( 'Starting to calculate volumes\nMin height is: ' + str(min_h), tag="Create_Bathymetry")
+        QgsMessageLog.logMessage( 'Delta is: ' + str(delta), tag="Create_Bathymetry")
         volumes = []
         features = histograms['OUTPUT'].getFeatures()
-        for feat in features:
-            QgsMessageLog.logMessage( 'starting segment: ' + str(feat['SEGMENT']), tag="Yoav")
+        for feat in features: # iterate over the segments
+            QgsMessageLog.logMessage( 'starting segment: ' + str(feat['SEGMENT']), tag="Create_Bathymetry")
             volume = []
-            up_limit = min_h + DELTA
+            up_limit = min_h + delta
             tmp_len = 0
             num_of_cells = 0
             for h in heights_list: # This list is already sorted
@@ -273,33 +279,33 @@ class BathCreator:
                     h_string = str(int(h))
                 num_of_cells += feat[h_string] # Calculate number of cells for populating the next delta 
                 if h < up_limit:
-                    tmp_len += (up_limit - h)*feat[h_string] # This is in meters overall heights
+                    tmp_len += (up_limit - h)*feat[h_string] # This is the overall height
                 else:
-                    volume.append(round(tmp_len*CELL_SIZE*CELL_SIZE,2)) # finished with this delta
-                    up_limit += DELTA  # setup the next delta
-                    tmp_len = (num_of_cells - feat[h_string])*DELTA # add the cells from the previous deltas
+                    volume.insert(0,tmp_len*cell_size) # finished with previous delta
+                    up_limit += delta  # setup the next delta
+                    while up_limit <= h : # if the next delta has no data in it, still add the volume of the one before
+                        volume.insert(0,tmp_len*cell_size)
+                        up_limit += delta
+                    tmp_len = (num_of_cells - feat[h_string])*delta # add the cells from the previous deltas
                     tmp_len += (up_limit - h)*feat[h_string] # populate the current pixel value
-            volume.append(round(tmp_len*CELL_SIZE*CELL_SIZE,2)) # append the last h calculations
-            volumes.append(volume) # append to all features list
-        QgsMessageLog.logMessage( 'Summary: ' + str(volumes), tag="Yoav")
+            volume.insert(0,tmp_len*cell_size) # append the last volume clculations
+            volumes.append({'SEGMENT' : int(feat['SEGMENT']), 'data' : volume}) # append to all features list
+        QgsMessageLog.logMessage( 'Volume clculation summary: ' + str(volumes), tag="Create_Bathymetry")
         return(volumes)    
 
-    def _calcWidth(self, data, volume_data):
-        DELTA = 0.5
-        l = len(volume_data[0])
+    def _calcWidth(self, data, volume_data, delta):
+        """According to delta and length get segment width from the volume """
+        k = len(volume_data[0]['data'])
         for i in range(len(data)):
-            QgsMessageLog.logMessage( str(data), tag="Yoav")
-            QgsMessageLog.logMessage( str(data[i]), tag="Yoav")
-            for x in range(l):
-                ll = data[i]['DLX']
-                volume_data[i][x] = (volume_data[i][x]/ll)/DELTA
+            for x in range(k):
+                length = data[i]['DLX']
+                volume_data[i]['data'][x] = round((volume_data[i]['data'][x]/length)/delta,2)
+        QgsMessageLog.logMessage( 'Calculated width summary: ' + str(volume_data), tag="Create_Bathymetry")
         return volume_data
 
     def run(self):
         """Run method that performs all the real work"""
 
-        #Variables that need to go out ot the GUI:
-        BUFF_LAYER_NAME = 'foo'
         # Create the dialog with elements (after translation) and keep reference
         # Only create GUI ONCE in callback, so that it will only load when the plugin is started
         if self.first_start == True:
@@ -312,7 +318,15 @@ class BathCreator:
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
-            layer = iface.activeLayer()
+            BUFFER_DISTANCE = 15     #TBD replace with GUI
+            BUFFER_SEGMENTS = 2      #TBD replace with GUI with default
+            LAYER_CRS = 'Polygon?crs=epsg:2039'       #TBD replace with GUI
+            BUFF_LAYER_NAME = 'foo'        #TBD replace with GUI
+            DEM_LAYER_NAME = 'LIDAR'        #TBD replace with GUI
+            DEM_BAND = '1'        #TBD replace with GUI with default
+            DELTA = 0.5         #TBD replace with GUI with default
+            OUTPUT_FILE_NAME = '/home/yoav/out.csv'
+            layer = iface.activeLayer()    #TBD replace with GUI
             features = layer.getFeatures()
             d = QgsDistanceArea()
             data = []
@@ -321,7 +335,7 @@ class BathCreator:
                 data_dic = {}
                 
                 # Read fields from the vector line
-                data_dic['segment']=feat["Segment"]
+                data_dic['SEGMENT']=feat["SEGMENT"]
                 data_dic['ELWS']=feat["ELWS"]
                 data_dic['FRIC']=feat["FRIC"]
                 
@@ -332,22 +346,43 @@ class BathCreator:
                 data_dic['PHI0'] = self._calculateAangle(feat)
                 
                 # Calculate buffer and add the segment ID for each buffer
-                buff = feat.geometry().buffer(15,2,QgsGeometry.CapFlat, QgsGeometry.JoinStyleRound, miterLimit = 0)
-                buffer_layer.append((buff, data_dic['segment']))
+                buff = feat.geometry().buffer(BUFFER_DISTANCE, BUFFER_SEGMENTS, QgsGeometry.CapFlat, QgsGeometry.JoinStyleRound, miterLimit = 0)
+                buffer_layer.append((buff, data_dic['SEGMENT']))
                 
-                
-                QgsMessageLog.logMessage( str(data_dic), tag="Yoav")
                 data.append(data_dic)
+            QgsMessageLog.logMessage( 'Data collected from features: ' + str(data), tag="Create_Bathymetry")
             
             # Add the buffer layer to the project 
-            self._createBufferLayer('Polygon?crs=epsg:2039', BUFF_LAYER_NAME ,buffer_layer)
+            self._createBufferLayer(LAYER_CRS, BUFF_LAYER_NAME ,buffer_layer)
             
             # Calculate volume by the cells value in each buffer
-            histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : 'LIDAR', 'RASTER_BAND' : '1', 'INPUT_VECTOR' : BUFF_LAYER_NAME, 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
-            volume_data = self._clacVolumes(histograms) # list of lists
+            histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : DEM_LAYER_NAME, 'RASTER_BAND' : DEM_BAND, 'INPUT_VECTOR' : BUFF_LAYER_NAME, 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
+            dem = QgsProject.instance().mapLayersByName(DEM_LAYER_NAME)
+            cell_size = dem[0].rasterUnitsPerPixelX()*dem[0].rasterUnitsPerPixelY() # get cell size m^2
+            volume_data = self._calcVolumes(histograms, DELTA, cell_size) # output is list of dic
             
             # Calculate width
-            width_data = self._calcWidth(data, volume_data)
+            width_data = self._calcWidth(data, volume_data, DELTA)
+
+            # Get the border segments into the data
+            sorted_width = sorted(width_data, key=lambda k: k['SEGMENT']) 
+            ##QgsMessageLog.logMessage(  str(sorted_width), tag="yoav")
+            n = len(sorted_width[0]['data']) # number of layers 
+            sorted_width.insert(0,{'SEGMENT': 1, 'data':[0]*n}) # insert first empty segment
+            data.append({'SEGMENT': 1, 'ELWS': '', 'FRIC' : '', 'DLX':'', 'PHI0':''})
+            seq = [x['SEGMENT'] for x in sorted_width]    
+            for i in range(max(seq)): #Iterate over all segments and add the missing border empty segments
+                if i+1 != sorted_width[i]['SEGMENT']:
+                    sorted_width.insert(i,{'SEGMENT': i+1, 'data':[0]*n})
+                    data.append({'SEGMENT': i+1, 'ELWS': '', 'FRIC' : '', 'DLX':'', 'PHI0':''})
+                    sorted_width.insert(i+1,{'SEGMENT': i+2, 'data':[0]*n})
+                    data.append({'SEGMENT': i+2, 'ELWS': '', 'FRIC' : '', 'DLX':'', 'PHI0':''})
+            sorted_width.insert(i+1,{'SEGMENT': i+2, 'data':[0]*n})
+            data.append({'SEGMENT': i+2, 'ELWS': '', 'FRIC' : '', 'DLX':'', 'PHI0':''}) # insert last empty segment
             
-            self._writeExcel(data, width_data)
+            regular_list = [] # simplify the data structure before writing the csv
+            for d in range(len(sorted_width)):
+                regular_list.append(sorted_width[d]['data'])
+            self._writeExcel(data, regular_list, DELTA, OUTPUT_FILE_NAME)
+            QgsMessageLog.logMessage( message='Execution finished ', tag="Create_Bathymetry")
 
