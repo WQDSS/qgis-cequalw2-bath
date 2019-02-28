@@ -240,23 +240,6 @@ class BathCreator:
                 f.writerow(r)
                 i += 1
 
-    def _createBufferLayer(self, geometry ,name ,buffers):
-        """Saves a buffer layer to the project memory for user impreesion how the buffer looks"""
-        layer = QgsVectorLayer(geometry, name, 'memory')
-        layer.startEditing()
-        prov = layer.dataProvider()
-        prov.addAttributes([QgsField("SEGMENT",  QVariant.Int)])
-        layer.updateFields()
-        for b in buffers:
-            feat = QgsFeature()
-            feat.initAttributes(1)
-            feat.setGeometry(b[0])
-            feat.setAttribute(0,str(int(b[1])))
-            prov.addFeatures([feat])
-        layer.updateExtents()
-        layer.commitChanges()
-        QgsProject.instance().addMapLayers([layer])
-
     def _calcVolumes(self, histograms, delta, cell_size):
         """Calculate the volume of each delta for each segment"""
         fields_list = histograms['OUTPUT'].fields().names()
@@ -321,7 +304,7 @@ class BathCreator:
             BUFFER_DISTANCE = 15     #TBD replace with GUI
             BUFFER_SEGMENTS = 2      #TBD replace with GUI with default
             LAYER_CRS = 'Polygon?crs=epsg:2039'       #TBD replace with GUI
-            BUFF_LAYER_NAME = 'foo'        #TBD replace with GUI
+            POLYGON_LAYER_NAME = 'foo'        #TBD replace with GUI
             DEM_LAYER_NAME = 'LIDAR'        #TBD replace with GUI
             DEM_BAND = '1'        #TBD replace with GUI with default
             DELTA = 0.5         #TBD replace with GUI with default
@@ -330,7 +313,7 @@ class BathCreator:
             features = layer.getFeatures()
             d = QgsDistanceArea()
             data = []
-            buffer_layer = []
+            #buffer_layer = []
             for feat in features:
                 data_dic = {}
                 
@@ -345,18 +328,11 @@ class BathCreator:
                 # Calculate line angle
                 data_dic['PHI0'] = self._calculateAangle(feat)
                 
-                # Calculate buffer and add the segment ID for each buffer
-                buff = feat.geometry().buffer(BUFFER_DISTANCE, BUFFER_SEGMENTS, QgsGeometry.CapFlat, QgsGeometry.JoinStyleRound, miterLimit = 0)
-                buffer_layer.append((buff, data_dic['SEGMENT']))
-                
                 data.append(data_dic)
             QgsMessageLog.logMessage( 'Data collected from features: ' + str(data), tag="Create_Bathymetry")
             
-            # Add the buffer layer to the project 
-            self._createBufferLayer(LAYER_CRS, BUFF_LAYER_NAME ,buffer_layer)
-            
             # Calculate volume by the cells value in each buffer
-            histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : DEM_LAYER_NAME, 'RASTER_BAND' : DEM_BAND, 'INPUT_VECTOR' : BUFF_LAYER_NAME, 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
+            histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : DEM_LAYER_NAME, 'RASTER_BAND' : DEM_BAND, 'INPUT_VECTOR' : POLYGON_LAYER_NAME, 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
             dem = QgsProject.instance().mapLayersByName(DEM_LAYER_NAME)
             cell_size = dem[0].rasterUnitsPerPixelX()*dem[0].rasterUnitsPerPixelY() # get cell size m^2
             volume_data = self._calcVolumes(histograms, DELTA, cell_size) # output is list of dic
@@ -366,7 +342,6 @@ class BathCreator:
 
             # Get the border segments into the data
             sorted_width = sorted(width_data, key=lambda k: k['SEGMENT']) 
-            ##QgsMessageLog.logMessage(  str(sorted_width), tag="yoav")
             n = len(sorted_width[0]['data']) # number of layers 
             sorted_width.insert(0,{'SEGMENT': 1, 'data':[0]*n}) # insert first empty segment
             data.append({'SEGMENT': 1, 'ELWS': '', 'FRIC' : '', 'DLX':'', 'PHI0':''})
