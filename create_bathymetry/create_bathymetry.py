@@ -31,12 +31,15 @@ from PyQt5.QtWidgets import QAction
 # Initialize Qt resources from file resources.py
 from .resources import *
 # Import the code for the dialog
-from .create_bathymetry_dialog import BathCreatorDialog
+#from .create_bathymetry_dialog import BathCreatorDialog
+from .dialog import BathCreatorDialog
+
 import os.path
 
 #from qgis.core import QgsProject
-from qgis.core import (QgsMessageLog, QgsDistanceArea, QgsGeometry,QgsVectorLayer,QgsFeature, QgsProject, QgsField)
+from qgis.core import (QgsMessageLog, QgsDistanceArea, QgsGeometry,QgsVectorLayer,QgsFeature, QgsProject, QgsField, Qgis)
 from qgis.utils import iface
+from qgis.gui import QgsMessageBar
 import processing
 
 
@@ -246,12 +249,12 @@ class BathCreator:
         fields_list.pop(0) # remove "SEGMENT" field.
         heights_list = [float(i) for i in fields_list] # from string to float
         min_h = min(heights_list)
-        QgsMessageLog.logMessage( 'Starting to calculate volumes\nMin height is: ' + str(min_h), tag="Create_Bathymetry")
-        QgsMessageLog.logMessage( 'Delta is: ' + str(delta), tag="Create_Bathymetry")
+        QgsMessageLog.logMessage( 'Starting to calculate volumes\nMin height is: ' + str(min_h), tag="Create_Bathymetry", level=Qgis.Info)
+        QgsMessageLog.logMessage( 'Delta is: ' + str(delta), tag="Create_Bathymetry", level=Qgis.Info)
         volumes = []
         features = histograms['OUTPUT'].getFeatures()
         for feat in features: # iterate over the segments
-            QgsMessageLog.logMessage( 'starting segment: ' + str(feat['SEGMENT']), tag="Create_Bathymetry")
+            QgsMessageLog.logMessage( 'starting segment: ' + str(feat['SEGMENT']), tag="Create_Bathymetry", level=Qgis.Info)
             volume = []
             up_limit = min_h + delta
             tmp_len = 0
@@ -273,7 +276,7 @@ class BathCreator:
                     tmp_len += (up_limit - h)*feat[h_string] # populate the current pixel value
             volume.insert(0,tmp_len*cell_size) # append the last volume clculations
             volumes.append({'SEGMENT' : int(feat['SEGMENT']), 'data' : volume}) # append to all features list
-        QgsMessageLog.logMessage( 'Volume clculation summary: ' + str(volumes), tag="Create_Bathymetry")
+        QgsMessageLog.logMessage( 'Volume clculation summary: ' + str(volumes), tag="Create_Bathymetry", level=Qgis.Info)
         return(volumes)    
 
     def _calcWidth(self, data, volume_data, delta):
@@ -283,7 +286,7 @@ class BathCreator:
             for x in range(k):
                 length = data[i]['DLX']
                 volume_data[i]['data'][x] = round((volume_data[i]['data'][x]/length)/delta,2)
-        QgsMessageLog.logMessage( 'Calculated width summary: ' + str(volume_data), tag="Create_Bathymetry")
+        QgsMessageLog.logMessage( 'Calculated width summary: ' + str(volume_data), tag="Create_Bathymetry", level=Qgis.Info)
         return volume_data
 
     def run(self):
@@ -301,19 +304,19 @@ class BathCreator:
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
-            BUFFER_DISTANCE = 15     #TBD replace with GUI
-            BUFFER_SEGMENTS = 2      #TBD replace with GUI with default
-            LAYER_CRS = 'Polygon?crs=epsg:2039'       #TBD replace with GUI
-            POLYGON_LAYER_NAME = 'foo'        #TBD replace with GUI
-            DEM_LAYER_NAME = 'LIDAR'        #TBD replace with GUI
-            DEM_BAND = '1'        #TBD replace with GUI with default
-            DELTA = 0.5         #TBD replace with GUI with default
-            OUTPUT_FILE_NAME = '/home/yoav/out.csv'
-            layer = iface.activeLayer()    #TBD replace with GUI
-            features = layer.getFeatures()
+            # Get Values from GUI
+            POLYGON_LAYER_NAME = self.dlg.polygone_value 
+            DEM_LAYER_NAME = self.dlg.dem_value 
+            DEM_BAND = '1'  
+            DELTA = float(self.dlg.delta_value) 
+            OUTPUT_FILE_NAME = self.dlg.csv_value  
+            LINE_LAYER = self.dlg.line_value
+            
+            # Start work
+            layer = QgsProject.instance().mapLayersByName(LINE_LAYER) 
+            features = layer[0].getFeatures()
             d = QgsDistanceArea()
             data = []
-            #buffer_layer = []
             for feat in features:
                 data_dic = {}
                 
@@ -329,7 +332,7 @@ class BathCreator:
                 data_dic['PHI0'] = self._calculateAangle(feat)
                 
                 data.append(data_dic)
-            QgsMessageLog.logMessage( 'Data collected from features: ' + str(data), tag="Create_Bathymetry")
+            QgsMessageLog.logMessage( 'Data collected from features: ' + str(data), tag="Create_Bathymetry", level=Qgis.Info)
             
             # Calculate volume by the cells value in each buffer
             histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : DEM_LAYER_NAME, 'RASTER_BAND' : DEM_BAND, 'INPUT_VECTOR' : POLYGON_LAYER_NAME, 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
@@ -344,20 +347,21 @@ class BathCreator:
             sorted_width = sorted(width_data, key=lambda k: k['SEGMENT']) 
             n = len(sorted_width[0]['data']) # number of layers 
             sorted_width.insert(0,{'SEGMENT': 1, 'data':[0]*n}) # insert first empty segment
-            data.append({'SEGMENT': 1, 'ELWS': '', 'FRIC' : '', 'DLX':'', 'PHI0':''})
+            data.append({'SEGMENT': 1, 'ELWS': '0', 'FRIC' : '0', 'DLX':'0', 'PHI0':'0'})
             seq = [x['SEGMENT'] for x in sorted_width]    
             for i in range(max(seq)): #Iterate over all segments and add the missing border empty segments
                 if i+1 != sorted_width[i]['SEGMENT']:
                     sorted_width.insert(i,{'SEGMENT': i+1, 'data':[0]*n})
-                    data.append({'SEGMENT': i+1, 'ELWS': '', 'FRIC' : '', 'DLX':'', 'PHI0':''})
+                    data.append({'SEGMENT': i+1, 'ELWS': '0', 'FRIC' : '0', 'DLX':'0', 'PHI0':'0'})
                     sorted_width.insert(i+1,{'SEGMENT': i+2, 'data':[0]*n})
-                    data.append({'SEGMENT': i+2, 'ELWS': '', 'FRIC' : '', 'DLX':'', 'PHI0':''})
+                    data.append({'SEGMENT': i+2, 'ELWS': '0', 'FRIC' : '0', 'DLX':'0', 'PHI0':'0'})
             sorted_width.insert(i+1,{'SEGMENT': i+2, 'data':[0]*n})
-            data.append({'SEGMENT': i+2, 'ELWS': '', 'FRIC' : '', 'DLX':'', 'PHI0':''}) # insert last empty segment
+            data.append({'SEGMENT': i+2, 'ELWS': '0', 'FRIC' : '0', 'DLX':'0', 'PHI0':'0'}) # insert last empty segment
             
             regular_list = [] # simplify the data structure before writing the csv
             for d in range(len(sorted_width)):
                 regular_list.append(sorted_width[d]['data'])
             self._writeExcel(data, regular_list, DELTA, OUTPUT_FILE_NAME)
-            QgsMessageLog.logMessage( message='Execution finished ', tag="Create_Bathymetry")
+            QgsMessageLog.logMessage( message='Execution finished ', tag="Create_Bathymetry", level=Qgis.Info)
+            iface.messageBar().pushMessage("Whoo", "Finished creating the bathymetric file", level=Qgis.Success, duration=10)
 
