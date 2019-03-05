@@ -227,21 +227,25 @@ class BathCreator:
         for e in width_data: #Insert the first and last rows of "0"
             e.insert(0,0)
             e.append(0)
-        with open(file_name, 'w') as csvfile:
-            f = csv.writer(csvfile, delimiter=',')
-            f.writerow(["$"])
-            f.writerow(segments)
-            f.writerow(dlx)
-            f.writerow(elws)
-            f.writerow(phi)
-            f.writerow(fric)
-            f.writerow(l)
-            i = 1
-            for row in zip(*width_data):
-                r = row[ : 0] + (delta,) + row[0: ] # add the delta value column A
-                r += (i,)  # add the K value
-                f.writerow(r)
-                i += 1
+        try:
+            with open(file_name, 'w') as csvfile:
+                f = csv.writer(csvfile, delimiter=',')
+                f.writerow(["$"])
+                f.writerow(segments)
+                f.writerow(dlx)
+                f.writerow(elws)
+                f.writerow(phi)
+                f.writerow(fric)
+                f.writerow(l)
+                i = 1
+                for row in zip(*width_data):
+                    r = row[ : 0] + (delta,) + row[0: ] # add the delta value column A
+                    r += (i,)  # add the K value
+                    f.writerow(r)
+                    i += 1
+            return True
+        except:
+            iface.messageBar().pushMessage("Error", "Failed creating the csv file, please check path is correct and writable", level=Qgis.Critical, duration=10)
 
     def _calcVolumes(self, histograms, delta, cell_size):
         """Calculate the volume of each delta for each segment"""
@@ -289,6 +293,33 @@ class BathCreator:
         QgsMessageLog.logMessage( 'Calculated width summary: ' + str(volume_data), tag="Create_Bathymetry", level=Qgis.Info)
         return volume_data
 
+    def _checkInput(self, poly, line):
+        l_poly = QgsProject.instance().mapLayersByName(poly)[0] 
+        l_line = QgsProject.instance().mapLayersByName(line)[0]
+        if l_poly.isEditable() or l_line.isEditable():
+            iface.messageBar().pushMessage("Error", "Layers are in edit mode. stop editing before running the plugin", level=Qgis.Critical, duration=10)
+            return False
+        fields = ['SEGMENT', 'ELWS', 'FRIC']
+        for f in fields:
+            if l_line.fields().indexFromName(f) == -1 :
+                iface.messageBar().pushMessage("Error", "Missing attribute %s in line layer" %l, level=Qgis.Critical, duration=10)
+                return False
+        if l_poly.fields().indexFromName('SEGMENT') == -1 :
+            iface.messageBar().pushMessage("Error", "Missing attribute SEGMENT in polygone layer", level=Qgis.Critical, duration=10)
+            return False
+        sorted_poly = sorted(l_poly.getFeatures(), key=lambda k: k['SEGMENT']) 
+        sorted_line = sorted(l_line.getFeatures(), key=lambda k: k['SEGMENT']) 
+        if len(sorted_poly) != len(sorted_line):
+            iface.messageBar().pushMessage("Error", "Line and poligone layers have diffrent number of features", level=Qgis.Critical, duration=10)
+            return False
+        for i in range(len(sorted_poly)):
+            if sorted_poly[i]['SEGMENT'] != sorted_line[i]['SEGMENT']:
+                iface.messageBar().pushMessage("Error", "Segment numbers are incompatible between the layers" , level=Qgis.Critical, duration=10)
+                return False
+        if l_line.wkbType() != 5:
+            iface.messageBar().pushMessage("Error", "Line layer is not from MultiLineString type", level=Qgis.Critical, duration=10)
+            return False
+
     def run(self):
         """Run method that performs all the real work"""
 
@@ -311,6 +342,11 @@ class BathCreator:
             DELTA = float(self.dlg.delta_value) 
             OUTPUT_FILE_NAME = self.dlg.csv_value  
             LINE_LAYER = self.dlg.line_value
+            
+            # Input check
+            ret = self._checkInput(POLYGON_LAYER_NAME, LINE_LAYER)
+            if ret == False:
+                return False
             
             # Start work
             layer = QgsProject.instance().mapLayersByName(LINE_LAYER) 
@@ -361,7 +397,8 @@ class BathCreator:
             regular_list = [] # simplify the data structure before writing the csv
             for d in range(len(sorted_width)):
                 regular_list.append(sorted_width[d]['data'])
-            self._writeExcel(data, regular_list, DELTA, OUTPUT_FILE_NAME)
+            ret = self._writeExcel(data, regular_list, DELTA, OUTPUT_FILE_NAME)
             QgsMessageLog.logMessage( message='Execution finished ', tag="Create_Bathymetry", level=Qgis.Info)
-            iface.messageBar().pushMessage("Whoo", "Finished creating the bathymetric file", level=Qgis.Success, duration=10)
+            if ret == True: 
+                iface.messageBar().pushMessage("Whoo", "Finished creating the bathymetric file", level=Qgis.Success, duration=10)
 
