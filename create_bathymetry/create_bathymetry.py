@@ -42,7 +42,6 @@ from qgis.utils import iface
 from qgis.gui import QgsMessageBar
 import processing
 
-
 class BathCreator:
     """QGIS Plugin Implementation."""
 
@@ -247,18 +246,11 @@ class BathCreator:
         except:
             iface.messageBar().pushMessage("Error", "Failed creating the csv file, please check path is correct and writable", level=Qgis.Critical, duration=10)
 
-    def _calcVolumes(self, histograms, delta, cell_size):
+    def _calcVolumes(self, heights_list, features, delta, cell_size):
         """Calculate the volume of each delta for each segment"""
-        fields_list = histograms['OUTPUT'].fields().names()
-        fields_list.pop(0) # remove "SEGMENT" field.
-        heights_list = [float(i) for i in fields_list] # from string to float
         min_h = min(heights_list)
-        QgsMessageLog.logMessage( 'Starting to calculate volumes\nMin height is: ' + str(min_h), tag="Create_Bathymetry", level=Qgis.Info)
-        QgsMessageLog.logMessage( 'Delta is: ' + str(delta), tag="Create_Bathymetry", level=Qgis.Info)
         volumes = []
-        features = histograms['OUTPUT'].getFeatures()
         for feat in features: # iterate over the segments
-            QgsMessageLog.logMessage( 'starting segment: ' + str(feat['SEGMENT']), tag="Create_Bathymetry", level=Qgis.Info)
             volume = []
             up_limit = min_h + delta
             tmp_len = 0
@@ -280,8 +272,7 @@ class BathCreator:
                     tmp_len += (up_limit - h)*feat[h_string] # populate the current pixel value
             volume.insert(0,tmp_len*cell_size) # append the last volume clculations
             volumes.append({'SEGMENT' : int(feat['SEGMENT']), 'data' : volume}) # append to all features list
-        QgsMessageLog.logMessage( 'Volume clculation summary: ' + str(volumes), tag="Create_Bathymetry", level=Qgis.Info)
-        return(volumes)    
+        return(volumes)
 
     def _calcWidth(self, data, volume_data, delta):
         """According to delta and length get segment width from the volume """
@@ -374,7 +365,12 @@ class BathCreator:
             histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : DEM_LAYER_NAME, 'RASTER_BAND' : DEM_BAND, 'INPUT_VECTOR' : POLYGON_LAYER_NAME, 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
             dem = QgsProject.instance().mapLayersByName(DEM_LAYER_NAME)
             cell_size = dem[0].rasterUnitsPerPixelX()*dem[0].rasterUnitsPerPixelY() # get cell size m^2
-            volume_data = self._calcVolumes(histograms, DELTA, cell_size) # output is list of dic
+            fields_list = histograms['OUTPUT'].fields().names()
+            fields_list.pop(0) # remove "SEGMENT" field.
+            heights_list = [float(i) for i in fields_list] # from string to float
+            features = histograms['OUTPUT'].getFeatures()
+            volume_data = self._calcVolumes(heights_list, features, DELTA, cell_size) # output is list of dic
+            QgsMessageLog.logMessage( 'Volume clculation summary: ' + str(volume_data), tag="Create_Bathymetry", level=Qgis.Info)
             
             # Calculate width
             width_data = self._calcWidth(data, volume_data, DELTA)
