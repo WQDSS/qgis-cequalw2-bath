@@ -31,16 +31,16 @@ from PyQt5.QtWidgets import QAction
 # Initialize Qt resources from file resources.py
 from .resources import *
 # Import the code for the dialog
-#from .create_bathymetry_dialog import BathCreatorDialog
 from .dialog import BathCreatorDialog
 
 import os.path
 
-#from qgis.core import QgsProject
 from qgis.core import (QgsMessageLog, QgsDistanceArea, QgsGeometry,QgsVectorLayer,QgsFeature, QgsProject, QgsField, Qgis)
 from qgis.utils import iface
 from qgis.gui import QgsMessageBar
 import processing
+
+from .calc_volumes import calcVolumes
 
 class BathCreator:
     """QGIS Plugin Implementation."""
@@ -246,34 +246,6 @@ class BathCreator:
         except:
             iface.messageBar().pushMessage("Error", "Failed creating the csv file, please check path is correct and writable", level=Qgis.Critical, duration=10)
 
-    def _calcVolumes(self, heights_list, features, delta, cell_size):
-        """Calculate the volume of each delta for each segment"""
-        min_h = min(heights_list)
-        volumes = []
-        for feat in features: # iterate over the segments
-            volume = []
-            up_limit = min_h + delta
-            tmp_len = 0
-            num_of_cells = 0
-            for h in heights_list: # This list is already sorted
-                h_string = str(h)
-                if h == int(h):  # The table represent 15.0 as 15
-                    h_string = str(int(h))
-                num_of_cells += feat[h_string] # Calculate number of cells for populating the next delta 
-                if h < up_limit:
-                    tmp_len += (up_limit - h)*feat[h_string] # This is the overall height
-                else:
-                    volume.insert(0,tmp_len*cell_size) # finished with previous delta
-                    up_limit += delta  # setup the next delta
-                    while up_limit <= h : # if the next delta has no data in it, still add the volume of the one before
-                        volume.insert(0,tmp_len*cell_size)
-                        up_limit += delta
-                    tmp_len = (num_of_cells - feat[h_string])*delta # add the cells from the previous deltas
-                    tmp_len += (up_limit - h)*feat[h_string] # populate the current pixel value
-            volume.insert(0,tmp_len*cell_size) # append the last volume clculations
-            volumes.append({'SEGMENT' : int(feat['SEGMENT']), 'data' : volume}) # append to all features list
-        return(volumes)
-
     def _calcWidth(self, data, volume_data, delta):
         """According to delta and length get segment width from the volume """
         k = len(volume_data[0]['data'])
@@ -369,7 +341,7 @@ class BathCreator:
             fields_list.pop(0) # remove "SEGMENT" field.
             heights_list = [float(i) for i in fields_list] # from string to float
             features = histograms['OUTPUT'].getFeatures()
-            volume_data = self._calcVolumes(heights_list, features, DELTA, cell_size) # output is list of dic
+            volume_data = calcVolumes(heights_list, features, DELTA, cell_size) # output is list of dic
             QgsMessageLog.logMessage( 'Volume clculation summary: ' + str(volume_data), tag="Create_Bathymetry", level=Qgis.Info)
             
             # Calculate width

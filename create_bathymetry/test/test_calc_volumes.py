@@ -1,22 +1,16 @@
 import unittest
 
-from .. import calc_volumes
+import calc_volumes
 
-class TestStringMethods(unittest.TestCase):
+class testVolumeCalculation(unittest.TestCase):
 
-    def test_upper(self):
-        self.assertEqual('foo'.upper(), 'FOO')
+    def test_with_missing_data(self):
+        out = calc_volumes.calcVolumes([0,1,2], [{'SEGMENT':2, '0':3, '1':6,'2':6 }], 0.5, 1)
+        self.assertEqual(out, [{'SEGMENT': 2, 'data': [7.5, 4.5, 4.5, 1.5, 1.5]}])
 
-    def test_isupper(self):
-        self.assertTrue('FOO'.isupper())
-        self.assertFalse('Foo'.isupper())
-
-    def test_split(self):
-        s = 'hello world'
-        self.assertEqual(s.split(), ['hello', 'world'])
-        # check that s.split fails when the separator is not a string
-        with self.assertRaises(TypeError):
-            s.split(2)
+    def test_with_all_data(self):
+        out = calc_volumes.calcVolumes([0,1,2], [{'SEGMENT':2, '0':3, '1':6,'2':6 }], 1, 1)
+        self.assertEqual(out, [{'SEGMENT': 2, 'data': [15, 9, 3]}])
 
 if __name__ == '__main__':
     unittest.main()

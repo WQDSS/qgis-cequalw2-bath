@@ -14,7 +14,7 @@ version=1.0
 author=Yoav Bornstein
 email=yoavborenst@gmail.com
 
-about=Given DEM, a line vector layer (each line represents a diffent segment in the module) and a polygone layer (each polygone represents a diffent segment in the module) you enter the diffrent parameters  and it creates the bathymetric file for you.
+about=Given a DEM layer, a line vector layer (each line represents a diffent segment in the module) and a polygone layer (each polygone represents a diffent segment in the module) you enter the diffrent parameters  and it creates the bathymetric file for you.
 
 tracker=https://github.com/WQDSS/qgis-cequalw2-bath/issues
 repository=https://github.com/WQDSS/qgis-cequalw2-bath
