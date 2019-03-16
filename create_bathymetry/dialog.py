@@ -25,6 +25,7 @@ import os
 
 from PyQt5 import uic
 from PyQt5 import QtWidgets
+#from PyQt5.QtWidgets import QFileDialog
 
 from .create_bathymetry_dialog import Ui_BathCreatorDialogBase
 
@@ -41,9 +42,10 @@ class BathCreatorDialog(QtWidgets.QDialog):
         self.polygone_value = ""
         self.ui.delta.textChanged.connect(self.updateDelta)
         self.ui.csv.textChanged.connect(self.updateCsv)
-        self.ui.dem.textChanged.connect(self.updateDem)
-        self.ui.line.textChanged.connect(self.updateLine)
-        self.ui.polygone.textChanged.connect(self.updatePolygone)
+        self.ui.dem.layerChanged.connect(self.updateDem)
+        self.ui.line.layerChanged.connect(self.updateLine)
+        self.ui.polygone.layerChanged.connect(self.updatePolygone)
+        self.ui.browsebttn.clicked.connect(self.getFile)
 
     def updateDelta(self, newText):
         self.delta_value = newText
@@ -51,12 +53,14 @@ class BathCreatorDialog(QtWidgets.QDialog):
     def updateCsv(self, newText):
         self.csv_value = newText
 
-    def updateDem(self, newText):
-        self.dem_value = newText
+    def updateDem(self, layer):
+        self.dem_value = layer.name()
 
-    def updateLine(self, newText):
-        self.line_value = newText
+    def updateLine(self, layer):
+        self.line_value = layer.name()
 
-    def updatePolygone(self, newText):
-        self.polygone_value = newText
+    def updatePolygone(self, layer):
+        self.polygone_value = layer.name()
         
+    def getFile(self):
+        self.ui.csv.setText(QtWidgets.QFileDialog.getSaveFileName(self, 'Save File', '', 'CSV(*.csv)')[0])
