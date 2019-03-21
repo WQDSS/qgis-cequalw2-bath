@@ -227,7 +227,7 @@ class BathCreator:
             e.insert(0,0)
             e.append(0)
         try:
-            with open(file_name, 'w') as csvfile:
+            with open(file_name, 'w', newline='') as csvfile:
                 f = csv.writer(csvfile, delimiter=',')
                 f.writerow(["$"])
                 f.writerow(segments)
