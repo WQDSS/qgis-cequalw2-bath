@@ -12,4 +12,5 @@ unittest:
 	PYTHONPATH=. python test/test_calc_volumes.py
 
 zip:
-	zip ../create_bathymetry.zip calc_volumes.py create_bathymetry* dialog.py icon.png __init__.py metadata.txt pylintrc resources.py resources.qrc
+	rm -f ../create_bathymetry.zip
+	cd .. && zip create_bathymetry.zip create_bathymetry/calc_volumes.py create_bathymetry/create_bathymetry* create_bathymetry/dialog.py create_bathymetry/icon.png create_bathymetry/ create_bathymetry/__init__.py create_bathymetry/metadata.txt create_bathymetry/pylintrc create_bathymetry/resources.py create_bathymetry/resources.qrc
