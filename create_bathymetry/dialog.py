@@ -35,23 +35,45 @@ class BathCreatorDialog(QtWidgets.QDialog):
         super(BathCreatorDialog, self).__init__(parent)
         self.ui = Ui_BathCreatorDialogBase()
         self.ui.setupUi(self)
+        self.delta_valid = True
         self.delta_value = ""
         self.csv_value = ""
-        self.dem_value = ""
-        self.line_value = ""
-        self.polygone_value = ""
+        self.dem_value = self.ui.dem.currentLayer().name()
+        self.line_value = self.ui.line.currentLayer().name()
+        self.polygone_value = self.ui.polygone.currentLayer().name()
+        self.updateOkButton()
         self.ui.delta.textChanged.connect(self.updateDelta)
         self.ui.csv.textChanged.connect(self.updateCsv)
         self.ui.dem.layerChanged.connect(self.updateDem)
         self.ui.line.layerChanged.connect(self.updateLine)
         self.ui.polygone.layerChanged.connect(self.updatePolygone)
         self.ui.browsebttn.clicked.connect(self.getFile)
+        
+    def updateOkButton(self):
+        if self.delta_valid and self.delta_value and self.csv_value:
+            self.ui.button_box.button(QtWidgets.QDialogButtonBox.Ok).setEnabled(True)
+        else:
+            self.ui.button_box.button(QtWidgets.QDialogButtonBox.Ok).setEnabled(False)
 
     def updateDelta(self, newText):
         self.delta_value = newText
+        try:
+            if self.delta_value:
+                delta = float(self.delta_value)
+                self.delta_valid = 0 < delta
+            else:
+                self.delta_valid = True
+        except:
+            self.delta_valid = False
+        if not self.delta_valid:
+            self.ui.delta.setStyleSheet("background-color: rgb(238, 169, 169);")
+        else:
+            self.ui.delta.setStyleSheet("")
+        self.updateOkButton()
 
     def updateCsv(self, newText):
         self.csv_value = newText
+        self.updateOkButton()
 
     def updateDem(self, layer):
         self.dem_value = layer.name()
