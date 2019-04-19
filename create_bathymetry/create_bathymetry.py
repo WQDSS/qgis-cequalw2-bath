@@ -337,9 +337,17 @@ class BathCreator:
             histograms = processing.run("native:zonalhistogram", {'INPUT_RASTER' : DEM_LAYER_NAME, 'RASTER_BAND' : DEM_BAND, 'INPUT_VECTOR' : POLYGON_LAYER_NAME, 'COLUMN_PREFIX': '', 'OUTPUT' : 'memory:'})
             dem = QgsProject.instance().mapLayersByName(DEM_LAYER_NAME)
             cell_size = dem[0].rasterUnitsPerPixelX()*dem[0].rasterUnitsPerPixelY() # get cell size m^2
+            
+            # remove all none number fields (like SEGMENT or anything else in the layer) 
             fields_list = histograms['OUTPUT'].fields().names()
-            fields_list.pop(0) # remove "SEGMENT" field.
-            heights_list = [float(i) for i in fields_list] # from string to float
+            heights_list = []
+            for i in fields_list: 
+                try:
+                    f = float(i)
+                except:
+                    pass
+                else:
+                    heights_list.append(f)
             features = histograms['OUTPUT'].getFeatures()
             volume_data = calcVolumes(heights_list, features, DELTA, cell_size) # output is list of dic
             QgsMessageLog.logMessage( 'Volume clculation summary: ' + str(volume_data), tag="Create_Bathymetry", level=Qgis.Info)
