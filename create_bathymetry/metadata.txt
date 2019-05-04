@@ -14,7 +14,7 @@ version=1.0
 author=Yoav Bornstein
 email=yoavborenst@gmail.com
 
-about=Given a DEM layer, a line vector layer (each line represents a diffent segment in the module) and a polygone layer (each polygone represents a diffent segment in the module) you enter the diffrent parameters and it creates the bathymetric file for you. Limitations: On large data sets the processing time is long, leaving the QGIS program unresponsive. You can either wait for the processing to finish or divide the data to smaller parts (less segments in each run).
+about=Given a DEM layer, a line vector layer (each line represents a different segment in the module) and a polygon layer (each polygon represents a different segment in the module) you enter the different parameters and it creates the bathymetric file for you.   Limitations: On large data sets the processing time is long, leaving the QGIS program unresponsive. You can either wait for the processing to finish or divide the data to smaller parts (less segments in each run).
 
 
 tracker=https://github.com/WQDSS/qgis-cequalw2-bath/issues
@@ -33,7 +33,7 @@ homepage=https://github.com/WQDSS/qgis-cequalw2-bath/wiki
 category=Plugins
 icon=icon.png
 # experimental flag
-experimental=True
+experimental=False
 
 # deprecated flag (applies to the whole plugin, not just a single version)
 deprecated=False
